@@ -1,0 +1,51 @@
+<?php
+
+/**
+ * @file: routes.php
+ * @description: Reporting & Analytics Service Routes (Complete)
+ * @module: ReportingAnalytics
+ * @author: Team Leader (Khalid)
+ */
+
+use Illuminate\Support\Facades\Route;
+use App\Modules\ReportingAnalytics\Controllers\KpiController;
+use App\Modules\ReportingAnalytics\Controllers\ReportController;
+
+Route::prefix('api/v1/analytics')->middleware('auth:sanctum')->group(function () {
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // KPIs & Metrics (AN-01/02/03/04/07)
+    // ══════════════════════════════════════════════════════════════════════════
+
+    Route::prefix('kpis')->group(function () {
+        // Specialized routes (before wildcard)
+        Route::get('/on-time-rate',               [KpiController::class, 'onTimeRate'])->name('analytics.kpis.on-time-rate');
+        Route::get('/co2-report',                 [KpiController::class, 'co2Report'])->name('analytics.kpis.co2-report');
+        Route::get('/anomalies',                  [KpiController::class, 'anomalies'])->name('analytics.kpis.anomalies');
+        Route::get('/driver-score/{driverId}',    [KpiController::class, 'driverScore'])->name('analytics.kpis.driver-score')->where('driverId', '[0-9]+');
+
+        // Paginated KPI snapshot list
+        Route::get('/', [KpiController::class, 'index'])->name('analytics.kpis.index');
+    });
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Reports (AN-04/05/06)
+    // ══════════════════════════════════════════════════════════════════════════
+
+    Route::prefix('reports')->group(function () {
+        // GET /api/v1/analytics/reports/daily-dashboard
+        Route::get('/daily-dashboard',   [ReportController::class, 'dailyDashboard'])->name('analytics.reports.daily-dashboard');
+
+        // GET /api/v1/analytics/reports/delivery-summary
+        Route::get('/delivery-summary',  [ReportController::class, 'deliverySummary'])->name('analytics.reports.delivery-summary');
+
+        // GET /api/v1/analytics/reports/maintenance-cost
+        Route::get('/maintenance-cost',  [ReportController::class, 'maintenanceCost'])->name('analytics.reports.maintenance-cost');
+
+        // GET /api/v1/analytics/reports/driver-leaderboard  (AN-05)
+        Route::get('/driver-leaderboard',[ReportController::class, 'driverLeaderboard'])->name('analytics.reports.driver-leaderboard');
+
+        // POST /api/v1/analytics/reports/export  (AN-06 / fn42)
+        Route::post('/export',           [ReportController::class, 'export'])->name('analytics.reports.export');
+    });
+});
