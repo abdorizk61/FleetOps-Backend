@@ -79,13 +79,15 @@ class StartController extends Controller
             //ارجاع الرد بصيغة json
             return response()->json([
                 'success' => true,
+                'message' => "تم جلب الببانات بنجاح",
                 'data' => $message
             ], 200);
 
         } catch (Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'حدث خطأ أثناء جلب السجلات: ' . $e->getMessage(),
+                'message' => 'حدث خطأ أثناء جلب السجلات',
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
