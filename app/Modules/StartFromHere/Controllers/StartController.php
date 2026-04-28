@@ -37,6 +37,7 @@
 namespace App\Modules\StartFromHere\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\StartFromHere\Requests\HelloRequest;
 use App\Modules\StartFromHere\Services\StartService;
 use App\Modules\StartFromHere\Requests\StartRequest;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -56,6 +57,45 @@ class StartController extends Controller
     {
         $this->startService = $startService;
     }
+    // hello fun
+
+    /*
+     * Post /api/v1/demo/hello
+     * @param HelloRequest  $request
+     * @return JsonResponse
+     */
+    public function hello(HelloRequest $request): JsonResponse
+    {
+        try {
+            // اسخراج البيانات المفلترة
+            $validated = $request->validated();
+
+
+            //ارسال البيانات المفلترة الى ال service و تخزين الرد في $message
+            $message = $this->startService->sayHello($validated['name']);
+
+
+
+            //ارجاع الرد بصيغة json
+            return response()->json([
+                'success' => true,
+                'data' => $message
+            ], 200);
+
+        } catch (Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'حدث خطأ أثناء جلب السجلات: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+
+
+
+
+
+
 
     // ─── GET /api/v1/demo ─────────────────────────────────────────────────────
 
@@ -73,7 +113,7 @@ class StartController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'تم جلب السجلات بنجاح',
-                'data'    => $records,
+                'data' => $records,
             ], 200);
 
         } catch (Exception $e) {
@@ -99,7 +139,7 @@ class StartController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'تم جلب السجل بنجاح',
-                'data'    => $record,
+                'data' => $record,
             ], 200);
 
         } catch (ModelNotFoundException $e) {
@@ -134,7 +174,7 @@ class StartController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'تم إنشاء السجل بنجاح',
-                'data'    => $record,
+                'data' => $record,
             ], 201); // 201 = Created
 
         } catch (Exception $e) {
@@ -162,7 +202,7 @@ class StartController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'تم تحديث السجل بنجاح',
-                'data'    => $record,
+                'data' => $record,
             ], 200);
 
         } catch (ModelNotFoundException $e) {
@@ -225,7 +265,7 @@ class StartController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'تم جلب السجلات النشطة',
-                'data'    => $records,
+                'data' => $records,
             ], 200);
 
         } catch (Exception $e) {
@@ -253,14 +293,14 @@ class StartController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'نتائج البحث',
-                'data'    => $results,
+                'data' => $results,
             ], 200);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'الكلمة المفتاحية يجب أن تكون حرفين على الأقل',
-                'errors'  => $e->errors(),
+                'errors' => $e->errors(),
             ], 422);
 
         } catch (Exception $e) {
@@ -286,7 +326,7 @@ class StartController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'تم تغيير الحالة إلى: ' . $record->status,
-                'data'    => $record,
+                'data' => $record,
             ], 200);
 
         } catch (ModelNotFoundException $e) {

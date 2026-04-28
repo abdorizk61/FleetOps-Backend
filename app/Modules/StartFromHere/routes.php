@@ -39,6 +39,12 @@ Route::prefix('api/v1')->middleware([StartDemoMiddleware::class])->group(functio
 
     Route::prefix('demo')->group(function () {
 
+        //POST /api/v1/demo/hello
+        Route::post('/hello', [StartController::class, 'hello'])
+            ->name('demo.hello');
+
+
+
         // ══════════════════════════════════════════════════════
         // ⚠️  SPECIALIZED ROUTES MUST COME BEFORE /{id}  ⚠️
         // ══════════════════════════════════════════════════════

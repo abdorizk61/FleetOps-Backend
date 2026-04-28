@@ -30,6 +30,7 @@ namespace App\Modules\StartFromHere\Services;
 use App\Modules\StartFromHere\Repositories\StartRepository;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Exception;
+use function Laravel\Prompts\title;
 
 class StartService
 {
@@ -44,6 +45,29 @@ class StartService
         $this->startRepository = $startRepository;
     }
 
+    //Hello function 
+    /*
+     * saying hello , user 
+     * @param String name ; 
+     * @return String record 
+     */
+
+    public function sayHello(string $name): string
+    {
+        /// business logic 
+        $message = "Hello {$name}!, welcome from start service";
+
+        ///sending data to repo to store in DB
+        $record = $this->startRepository->create([
+            'title' => "syaing Hello to " . $name,
+            'description' => $message,
+            'status' => 'active',
+            'created_by' => 1,
+        ]);
+        ///return data to controller
+        return $message;
+
+    }
     // ─── READ Operations ──────────────────────────────────────────────────────
 
     /**
