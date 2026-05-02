@@ -38,7 +38,7 @@ class Order extends Model
         'OrderID',
         'DriverID(FK)',
         'CustomerID(FK)',
-        'VehicleID(FK)',
+        'vehicle_id(FK)',
         'TransactionID(FK)',
         'Status',
         'ETA',
@@ -95,7 +95,7 @@ class Order extends Model
     /** Vehicle assigned to deliver this order */
     public function vehicle()
     {
-        return $this->belongsTo(Vehicle::class, 'VehicleID(FK)', 'vehicle_id');
+        return $this->belongsTo(Vehicle::class, 'vehicle_id(FK)', 'vehicle_id');
     }
 
     /** Route stop(s) associated with this order */

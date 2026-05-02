@@ -19,7 +19,7 @@ return new class extends Migration {
             
             $table->bigInteger('DriverID(FK)')->nullable();
             $table->bigInteger('CustomerID(FK)')->nullable();
-            $table->bigInteger('VehicleID(FK)')->nullable();
+            $table->bigInteger('vehicle_id(FK)')->nullable();
             $table->bigInteger('TransactionID(FK)')->nullable();
             
             $table->string('Status', 50)->nullable();
@@ -44,7 +44,7 @@ return new class extends Migration {
             $table->string('Area', 255)->nullable();
 
             // Foreign Keys (TransactionID FK will be added in a later migration)
-            $table->foreign('VehicleID(FK)', 'FK_Order_Vehicle')
+            $table->foreign('vehicle_id(FK)', 'FK_Order_Vehicle')
                   ->references('vehicle_id')->on('vehicles')->noActionOnDelete();
                   
             $table->foreign('CustomerID(FK)', 'FK_Orders_Customers')
