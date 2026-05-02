@@ -13,6 +13,7 @@ use App\Http\Controllers\Controller;
 use App\Modules\RouteDispatch\Services\DispatchService;
 use App\Modules\RouteDispatch\Services\RouteOptimizationService;
 use App\Modules\RouteDispatch\Requests\DispatchRequest;
+use App\Modules\RouteDispatch\Requests\PriorityScoreRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -102,5 +103,28 @@ class DispatchController extends Controller
         // 1. Validate: order_ids (required|array), cluster_count (required|integer|min:1)
         // $clusters = $this->optimizationService->clusterOrders($request->order_ids, $request->cluster_count)
         // return response()->json(['success' => true, 'data' => $clusters])
+    }
+
+    /**
+     * حساب درجة أولوية الطلبات (POST /api/v1/dispatch/priority-score)
+     *  score من 0 إلى 100 لكل طلب.
+     */
+    public function priorityScore(PriorityScoreRequest $request): JsonResponse
+    {
+        $validatedData = $request->validated();
+
+        $orderIds = $validatedData['order_ids'] ?? null;
+
+        if (!is_array($orderIds) || count($orderIds) === 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'The order_ids field is required and must be a non-empty array.',
+                'errors' => ['order_ids' => ['The order_ids field is required and must be a non-empty array.']],
+            ], 422);
+        }
+
+        $scores = $this->dispatchService->calculatePriorityScores($orderIds);
+
+        return response()->json(['success' => true, 'data' => $scores]);
     }
 }

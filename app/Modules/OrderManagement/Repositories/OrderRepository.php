@@ -64,6 +64,12 @@ class OrderRepository extends BaseRepository
         // return $this->model->where('status', 'returned')->where('retry_count', '<', 3)->get();
     }
 
+
+    public function findByIds(array $orderIds): Collection
+    {
+        return $this->model->whereIn('OrderID', $orderIds)->get();
+    }
+
     public function findByStatus(string $status): Collection
     {
         return $this->model->where('status', $status)
