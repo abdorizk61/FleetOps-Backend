@@ -11,17 +11,24 @@ namespace App\Modules\RouteDispatch\Services;
 
 use App\Modules\OrderManagement\Repositories\OrderRepository;
 use App\Modules\RouteDispatch\Repositories\RouteRepository;
+use App\Modules\RouteDispatch\Repositories\VehicleRepository;
 use Exception;
 
 class RouteOptimizationService
 {
     protected RouteRepository $routeRepository;
     protected OrderRepository $orderRepository;
+    protected VehicleRepository $vehicleRepository;
 
-    public function __construct(RouteRepository $routeRepository, OrderRepository $orderRepository)
+    public function __construct(
+        RouteRepository $routeRepository,
+        OrderRepository $orderRepository,
+        VehicleRepository $vehicleRepository
+    )
     {
         $this->routeRepository = $routeRepository;
         $this->orderRepository = $orderRepository;
+        $this->vehicleRepository = $vehicleRepository;
     }
 
     /**
@@ -190,16 +197,109 @@ class RouteOptimizationService
 
     /**
      * التحقق من سعة التحميل (RD-03 / fn03)
-     * @param int $vehicleId
-     * @param array $orderIds
-     * @return array ['valid' => bool, 'weight_used' => float, 'volume_used' => float]
+     * @param array $clusters
+     * @return array<int, array<string, mixed>>
      */
-    public function checkLoadCapacity(int $vehicleId, array $orderIds): array
+    public function checkLoadCapacity(array $clusters): array
     {
-        // TODO: Load capacity check
-        // 1. Get vehicle max_weight_kg and max_volume_m3
-        // 2. Sum weight_kg and volume_m3 of all orders
-        // 3. Compare totals to vehicle capacity
-        // 4. Return result with usage percentages
+        $results = [];
+
+        foreach ($clusters as $cluster) {
+            $vehicleId = (int) ($cluster['vehicle_id'] ?? 0);
+            $orders = is_array($cluster['orders'] ?? null) ? $cluster['orders'] : [];
+            $vehicle = $this->vehicleRepository->findById($vehicleId);
+
+            if ($vehicle === null) {
+                $results[] = [
+                    'color' => $cluster['color'] ?? null,
+                    'zone' => $cluster['zone'] ?? null,
+                    'vehicle_id' => $vehicleId,
+                    'vehicle' => null,
+                    'valid' => false,
+                    'message' => 'Vehicle not found.',
+                    'summary' => [
+                        'orders_count' => count($orders),
+                        'weight_used' => 0,
+                        'volume_used' => 0,
+                        'max_weight_capacity' => null,
+                        'max_volume_capacity' => null,
+                        'weight_usage_percent' => null,
+                        'volume_usage_percent' => null,
+                        'fits_weight' => false,
+                        'fits_volume' => false,
+                    ],
+                    'orders' => $this->normalizeOrders($orders),
+                ];
+
+                continue;
+            }
+
+            $weightUsed = 0.0;
+            $volumeUsed = 0.0;
+
+            foreach ($orders as $order) {
+                $weightUsed += (float) ($order['Weight'] ?? 0);
+                $volumeUsed += (float) ($order['Volume'] ?? 0);
+            }
+
+            $maxWeightCapacity = (float) ($vehicle->MaxWeightCapacity ?? 0);
+            $maxVolumeCapacity = (float) ($vehicle->MaxVolume ?? 0);
+            $weightUsagePercent = $maxWeightCapacity > 0 ? round(($weightUsed / $maxWeightCapacity) * 100, 2) : null;
+            $volumeUsagePercent = $maxVolumeCapacity > 0 ? round(($volumeUsed / $maxVolumeCapacity) * 100, 2) : null;
+            $fitsWeight = $maxWeightCapacity > 0 && $weightUsed <= $maxWeightCapacity;
+            $fitsVolume = $maxVolumeCapacity > 0 && $volumeUsed <= $maxVolumeCapacity;
+
+            $results[] = [
+                'color' => $cluster['color'] ?? null,
+                'zone' => $cluster['zone'] ?? null,
+                'vehicle_id' => $vehicleId,
+                'vehicle' => [
+                    'vehicle_id' => $vehicle->vehicle_id,
+                    'VehicleModel' => $vehicle->VehicleModel,
+                    'VehicleType' => $vehicle->VehicleType,
+                    'MaxWeightCapacity' => $vehicle->MaxWeightCapacity,
+                    'MaxVolume' => $vehicle->MaxVolume,
+                    'Status' => $vehicle->Status,
+                ],
+                'valid' => $fitsWeight && $fitsVolume,
+                'message' => ($fitsWeight && $fitsVolume)
+                    ? 'Cluster fits within vehicle capacity.'
+                    : 'Cluster exceeds vehicle capacity.',
+                'summary' => [
+                    'orders_count' => count($orders),
+                    'weight_used' => round($weightUsed, 2),
+                    'volume_used' => round($volumeUsed, 2),
+                    'max_weight_capacity' => $maxWeightCapacity,
+                    'max_volume_capacity' => $maxVolumeCapacity,
+                    'weight_usage_percent' => $weightUsagePercent,
+                    'volume_usage_percent' => $volumeUsagePercent,
+                    'fits_weight' => $fitsWeight,
+                    'fits_volume' => $fitsVolume,
+                ],
+                'orders' => $this->normalizeOrders($orders),
+            ];
+        }
+
+        return $results;
+    }
+
+    /**
+     * Normalize order payloads for the capacity check response.
+     *
+     * @param array $orders
+     * @return array<int, array<string, mixed>>
+     */
+    private function normalizeOrders(array $orders): array
+    {
+        return array_map(static function (array $order): array {
+            return [
+                'OrderID' => $order['OrderID'] ?? null,
+                'Weight' => isset($order['Weight']) ? (float) $order['Weight'] : null,
+                'Volume' => isset($order['Volume']) ? (float) $order['Volume'] : null,
+                'Status' => $order['Status'] ?? null,
+                'Area' => $order['Area'] ?? null,
+                'customer' => $order['customer'] ?? null,
+            ];
+        }, $orders);
     }
 }

@@ -13,6 +13,7 @@ use App\Http\Controllers\Controller;
 use App\Modules\RouteDispatch\Services\DispatchService;
 use App\Modules\RouteDispatch\Services\RouteOptimizationService;
 use App\Modules\RouteDispatch\Requests\DispatchRequest;
+use App\Modules\RouteDispatch\Requests\CapacityCheckRequest;
 use App\Modules\RouteDispatch\Requests\ClusterOrdersRequest;
 use App\Modules\RouteDispatch\Requests\PriorityScoreRequest;
 use Illuminate\Http\JsonResponse;
@@ -86,12 +87,29 @@ class DispatchController extends Controller
      * التحقق من سعة التحميل (RD-03 / fn03)
      * POST /api/v1/dispatch/capacity-check
      */
-    public function capacityCheck(Request $request): JsonResponse
+    public function capacityCheck(CapacityCheckRequest $request): JsonResponse
     {
-        // TODO: Check load capacity
-        // 1. Validate: vehicle_id, order_ids (array)
-        // $result = $this->optimizationService->checkLoadCapacity($request->vehicle_id, $request->order_ids)
-        // return response()->json(['success' => true, 'data' => $result])
+        $validatedData = $request->validated();
+
+        $result = $this->optimizationService->checkLoadCapacity($validatedData['data']);
+        $validClusters = array_values(array_filter($result, static fn (array $cluster): bool => (bool) ($cluster['valid'] ?? false)));
+        $invalidClusters = array_values(array_filter($result, static fn (array $cluster): bool => !((bool) ($cluster['valid'] ?? false))));
+        $allValid = count($invalidClusters) === 0;
+
+        return response()->json([
+            'success' => true,
+            'message' => $allValid
+                ? 'All clusters fit within the assigned vehicle capacities.'
+                : 'Some clusters exceed vehicle capacity or use an invalid vehicle.',
+            'summary' => [
+                'all_valid' => $allValid,
+                'total_clusters' => count($result),
+                'valid_clusters' => count($validClusters),
+                'invalid_clusters' => count($invalidClusters),
+            ],
+            'data' => $result,
+            'invalid_clusters' => $invalidClusters,
+        ]);
     }
 
     /**
