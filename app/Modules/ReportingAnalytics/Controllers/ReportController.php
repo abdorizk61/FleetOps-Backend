@@ -90,23 +90,92 @@ class ReportController extends Controller
     }
 
     /**
-     * تقرير تكاليف الصيانة
+     * تقرير تكاليف الصيانة (analytics-maintenance-cost)
      * GET /api/v1/analytics/reports/maintenance-cost
      */
-    public function maintenanceCost(KpiFilterRequest $request): JsonResponse
+    public function maintenanceCost(Request $request): JsonResponse
     {
-        // TODO: $report = $this->reportService->getMaintenanceCostReport($request->period_start, $request->period_end)
-        // return response()->json(['success' => true, 'data' => $report])
+        $request->validate([
+            'period_start' => 'sometimes|date',
+            'period_end'   => 'sometimes|date|after_or_equal:period_start',
+        ]);
+
+        try {
+            // Default: last 6 months
+            $periodStart = $request->input('period_start', now()->subMonths(6)->startOfMonth()->toDateString());
+            $periodEnd   = $request->input('period_end', now()->toDateString());
+
+            $data = $this->reportService->getMaintenanceCostReport($periodStart, $periodEnd);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'تم جلب البيانات بنجاح',
+                'data'    => $data,
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'خطأ: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * مخطط الإيرادات الشهري (analytics-revenue-chart)
+     * GET /api/v1/analytics/reports/revenue-chart?months=6
+     */
+    public function revenueChart(Request $request): JsonResponse
+    {
+        $request->validate([
+            'months' => 'sometimes|integer|min:1|max:24',
+        ]);
+
+        try {
+            $months = (int) $request->input('months', 6);
+            $data   = $this->reportService->getRevenueChart($months);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'تم جلب البيانات بنجاح',
+                'data'    => $data,
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'خطأ: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**
      * لوحة الترتيب (Leaderboard) بنقاط السائقين (AN-05)
      * GET /api/v1/analytics/reports/driver-leaderboard
      */
-    public function driverLeaderboard(KpiFilterRequest $request): JsonResponse
+    public function driverLeaderboard(Request $request): JsonResponse
     {
-        // TODO: $leaderboard = $this->performanceRepository->getLeaderboard($request->period_start, $request->period_end)
-        // return response()->json(['success' => true, 'data' => $leaderboard])
+        $request->validate([
+            'period_start' => 'sometimes|date',
+            'period_end'   => 'sometimes|date|after_or_equal:period_start',
+        ]);
+
+        try {
+            // Default: last 6 months
+            $periodStart = $request->input('period_start', now()->subMonths(6)->startOfMonth()->toDateString());
+            $periodEnd   = $request->input('period_end', now()->toDateString());
+
+            $leaderboard = $this->performanceRepository->getLeaderboard($periodStart, $periodEnd);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'تم جلب البيانات بنجاح',
+                'data'    => $leaderboard,
+            ], 200);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'خطأ: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**
