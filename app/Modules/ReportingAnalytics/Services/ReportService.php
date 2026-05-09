@@ -337,6 +337,7 @@ class ReportService
 
             // ── 3. Open Alerts (unresolved incidents) ────────────────────────────
             $openAlerts = IncidentReport::query()
+                ->open()
                 ->whereDate('incident_ts', '<=', $date)
                 ->count();
 
