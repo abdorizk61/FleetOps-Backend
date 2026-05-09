@@ -29,15 +29,121 @@ class ReportService
      */
     public function exportReport(string $reportType, array $filters, string $format = 'xlsx'): array
     {
-        // TODO: Export report
         // 1. Validate reportType and format
+        $validTypes = ['driver_performance', 'fleet_kpis', 'delivery_summary', 'co2', 'maintenance_cost'];
+        if (!in_array($reportType, $validTypes)) {
+            throw new \InvalidArgumentException("Invalid report type: {$reportType}");
+        }
+
+        $validFormats = ['xlsx', 'csv', 'pdf'];
+        if (!in_array($format, $validFormats)) {
+            throw new \InvalidArgumentException("Invalid format: {$format}");
+        }
+
+        $periodStart = $filters['period_start'] ?? Carbon::now()->subDays(30)->toDateString();
+        $periodEnd = $filters['period_end'] ?? Carbon::now()->toDateString();
+        
         // 2. Fetch data based on reportType and filters
-        // 3. Based on format:
-        //    - xlsx/csv: use maatwebsite/excel or fputcsv for CSV
-        //    - pdf: use barryvdh/laravel-dompdf
-        // 4. Generate filename: "{reportType}_{period_start}_{period_end}.{format}"
-        // 5. Store file temporarily in storage/app/exports/
+        $data = [];
+        $kpiService = app(\App\Modules\ReportingAnalytics\Services\KpiService::class);
+
+        switch ($reportType) {
+            case 'driver_performance':
+                if (!empty($filters['driver_id'])) {
+                    $data = [$kpiService->calculateDriverPerformanceScore($filters['driver_id'], $periodStart, $periodEnd)];
+                } else {
+                    $repo = app(\App\Modules\ReportingAnalytics\Repositories\DriverPerformanceRepository::class);
+                    $data = $repo->getLeaderboard($periodStart, $periodEnd);
+                }
+                break;
+            case 'fleet_kpis':
+                $data = [$kpiService->getAnalyticsKpis('30d')];
+                break;
+            case 'delivery_summary':
+                $data = [$this->getDeliverySummary($periodStart, $periodEnd, $filters['driver_id'] ?? null)];
+                break;
+            case 'co2':
+                $res = $kpiService->generateCO2Report('monthly');
+                $data = $res['vehicles'] ?? [];
+                break;
+            case 'maintenance_cost':
+                $res = $this->getMaintenanceCostReport($periodStart, $periodEnd);
+                $data = $res['monthly_breakdown'] ?? [];
+                break;
+        }
+
+        // Flatten data for CSV/XLSX
+        $flatData = [];
+        foreach ($data as $item) {
+            $flatData[] = $this->flattenArray((array) $item);
+        }
+
+        // 4. Generate filename
+        $timestamp = Carbon::now()->format('Ymd_His');
+        $filename = "{$reportType}_{$periodStart}_{$periodEnd}_{$timestamp}.{$format}";
+        $path = "exports/{$filename}";
+
+        // 3. Based on format & 5. Store file temporarily
+        if ($format === 'pdf' && class_exists('\Barryvdh\DomPDF\Facade\Pdf')) {
+            $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadHTML("<h1>{$reportType} Report</h1><pre>" . json_encode($data, JSON_PRETTY_PRINT) . "</pre>");
+            \Illuminate\Support\Facades\Storage::disk('local')->put($path, $pdf->output());
+        } elseif (($format === 'xlsx' || $format === 'csv') && class_exists('\Maatwebsite\Excel\Facades\Excel')) {
+            // Native fallback for Excel if Export class isn't created
+            $this->generateNativeCsv($flatData, $path);
+        } else {
+            // Fallback for all to native CSV
+            if ($format === 'xlsx' || $format === 'pdf') {
+                $filename = str_replace(['.xlsx', '.pdf'], '.csv', $filename);
+                $path = "exports/{$filename}";
+            }
+            $this->generateNativeCsv($flatData, $path);
+        }
+
         // 6. Return file info with download URL
+        return [
+            'file_path' => $path,
+            'filename' => $filename,
+            'size_bytes' => \Illuminate\Support\Facades\Storage::disk('local')->exists($path) ? \Illuminate\Support\Facades\Storage::disk('local')->size($path) : 0,
+            'download_url' => url("storage/{$path}")
+        ];
+    }
+
+    /**
+     * Helper to flatten nested array for CSV
+     */
+    private function flattenArray(array $array, string $prefix = ''): array
+    {
+        $result = [];
+        foreach ($array as $key => $value) {
+            $newKey = $prefix . (empty($prefix) ? '' : '_') . $key;
+            if (is_array($value)) {
+                $result = array_merge($result, $this->flattenArray($value, $newKey));
+            } else {
+                $result[$newKey] = is_bool($value) ? ($value ? 'Yes' : 'No') : $value;
+            }
+        }
+        return $result;
+    }
+
+    /**
+     * Helper to generate CSV natively
+     */
+    private function generateNativeCsv(array $data, string $path): void
+    {
+        $output = fopen('php://temp', 'r+');
+        if (!empty($data)) {
+            fputcsv($output, array_keys($data[0]));
+            foreach ($data as $row) {
+                fputcsv($output, array_values($row));
+            }
+        } else {
+            fputcsv($output, ['No data available for this report']);
+        }
+        rewind($output);
+        $csvContent = stream_get_contents($output);
+        fclose($output);
+        
+        \Illuminate\Support\Facades\Storage::disk('local')->put($path, $csvContent);
     }
 
     /**
@@ -49,12 +155,56 @@ class ReportService
      */
     public function getDeliverySummary(string $periodStart, string $periodEnd, ?int $driverId = null): array
     {
-        // TODO: Get delivery summary
         // 1. Query orders in period from SQL Server
+        $query = \Illuminate\Support\Facades\DB::table('order')
+            ->whereBetween('Created_at', [$periodStart, $periodEnd]);
+            
+        // 4. If driverId provided → filter by driver
+        if ($driverId) {
+            $query->where('DriverID(FK)', $driverId);
+        }
+        
+        $orders = $query->get();
+        
         // 2. Group by status: delivered, returned, failed, in_transit
         // 3. Calculate totals and percentages
-        // 4. If driverId provided → filter by driver
-        // 5. Return summary array
+        $total = $orders->count();
+        
+        $summary = [
+            'total_orders' => $total,
+            'delivered' => 0,
+            'returned' => 0,
+            'failed' => 0,
+            'in_transit' => 0,
+            'other' => 0
+        ];
+        
+        foreach ($orders as $order) {
+            $status = strtolower($order->Status ?? '');
+            if ($status === 'delivered') {
+                $summary['delivered']++;
+            } elseif ($status === 'returned') {
+                $summary['returned']++;
+            } elseif ($status === 'failed') {
+                $summary['failed']++;
+            } elseif (in_array($status, ['intransit', 'in_transit', 'out for delivery'])) {
+                $summary['in_transit']++;
+            } else {
+                $summary['other']++;
+            }
+        }
+        
+        $summary['delivered_pct'] = $total > 0 ? round(($summary['delivered'] / $total) * 100, 2) : 0;
+        $summary['returned_pct'] = $total > 0 ? round(($summary['returned'] / $total) * 100, 2) : 0;
+        $summary['failed_pct'] = $total > 0 ? round(($summary['failed'] / $total) * 100, 2) : 0;
+        $summary['in_transit_pct'] = $total > 0 ? round(($summary['in_transit'] / $total) * 100, 2) : 0;
+        
+        return [
+            'period_start' => $periodStart,
+            'period_end' => $periodEnd,
+            'driver_id' => $driverId,
+            'summary' => $summary
+        ];
     }
 
     /**

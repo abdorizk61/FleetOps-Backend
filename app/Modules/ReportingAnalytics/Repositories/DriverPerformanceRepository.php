@@ -26,7 +26,9 @@ class DriverPerformanceRepository extends BaseRepository
      */
     public function getForDriver(int $driverId, int $perPage = 12)
     {
-        // TODO: return $this->model->where('driver_id', $driverId)->latest('period_start')->paginate($perPage);
+        return $this->model->where('driver_id', $driverId)
+            ->orderByDesc('period_start')
+            ->paginate($perPage);
     }
 
     /**
@@ -82,10 +84,13 @@ class DriverPerformanceRepository extends BaseRepository
      */
     public function upsertScore(int $driverId, string $periodStart, string $periodEnd, array $scoreData): DriverPerformanceScore
     {
-        // TODO: Upsert driver score
-        // return $this->model->updateOrCreate(
-        //     ['driver_id' => $driverId, 'period_start' => $periodStart, 'period_end' => $periodEnd],
-        //     $scoreData
-        // );
+        return $this->model->updateOrCreate(
+            [
+                'driver_id' => $driverId, 
+                'period_start' => $periodStart, 
+                'period_end' => $periodEnd
+            ],
+            $scoreData
+        );
     }
 }

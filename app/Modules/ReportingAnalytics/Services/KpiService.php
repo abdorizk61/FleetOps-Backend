@@ -43,16 +43,96 @@ class KpiService
      */
     public function calculateDriverPerformanceScore(int $driverId, string $periodStart, string $periodEnd): array
     {
-        // TODO: Calculate driver performance composite score
-        // 1. Get weights from config: config('analytics.performance_weights')
-        //    e.g., ['delivery_speed' => 0.4, 'fuel_efficiency' => 0.3, 'customer_rating' => 0.3]
-        // 2. Calculate each component:
-        //    - on_time_rate: deliveries on time / total deliveries
-        //    - fuel_efficiency_score: normalize (km/L vs fleet average)
-        //    - customer_rating_avg: avg from post-delivery feedback
-        // 3. composite_score = sum of (component × weight) × 100
+        // 1. Get weights from config
+        $weights = config('analytics.performance_weights', [
+            'delivery_speed' => 0.4,
+            'fuel_efficiency' => 0.3,
+            'customer_rating' => 0.3
+        ]);
+
+        // 2. Calculate each component
+        
+        // - on_time_rate: deliveries on time / total deliveries
+        $orders = DB::table('order')
+            ->where('DriverID(FK)', $driverId)
+            ->where('Status', 'Delivered')
+            ->whereBetween('DeliveredAt', [$periodStart, $periodEnd])
+            ->get();
+            
+        $totalDeliveries = $orders->count();
+        $onTime = 0;
+        foreach ($orders as $order) {
+            if ($order->PromisedWindow && $order->DeliveredAt <= $order->PromisedWindow) {
+                $onTime++;
+            }
+        }
+        $onTimeRate = $totalDeliveries > 0 ? ($onTime / $totalDeliveries) * 100 : 0;
+
+        // - fuel_efficiency_score: normalize (km/L vs fleet average)
+        $driverRoutes = DB::table('routes')
+            ->where('driver_id', $driverId)
+            ->whereBetween('scheduled_start_time', [$periodStart, $periodEnd])
+            ->get();
+            
+        $driverDistance = $driverRoutes->sum('total_distance');
+        $driverFuel = $driverRoutes->sum('fuel_consumption_est');
+        $driverKmL = $driverFuel > 0 ? $driverDistance / $driverFuel : 0;
+
+        $fleetRoutes = DB::table('routes')
+            ->whereBetween('scheduled_start_time', [$periodStart, $periodEnd])
+            ->get();
+            
+        $fleetDistance = $fleetRoutes->sum('total_distance');
+        $fleetFuel = $fleetRoutes->sum('fuel_consumption_est');
+        $fleetKmL = $fleetFuel > 0 ? $fleetDistance / $fleetFuel : 0;
+
+        $fuelEfficiencyScore = 0;
+        if ($fleetKmL > 0) {
+            $ratio = $driverKmL / $fleetKmL;
+            $fuelEfficiencyScore = min(100, max(0, $ratio * 100));
+        }
+
+        // - customer_rating_avg: avg from post-delivery feedback
+        // Fallback to driver_performance table since feedback table doesn't exist
+        $perf = DB::table('driver_performance')
+            ->where('driver_id', $driverId)
+            ->where('period_start', '>=', $periodStart)
+            ->where('period_end', '<=', $periodEnd)
+            ->avg('avg_customer_rating');
+            
+        $customerRatingAvg = $perf ? (float) $perf : 0;
+        $customerRatingScore = ($customerRatingAvg / 5) * 100;
+
+        // 3. composite_score = sum of (component × weight)
+        $compositeScore = ($onTimeRate * $weights['delivery_speed']) +
+                          ($fuelEfficiencyScore * $weights['fuel_efficiency']) +
+                          ($customerRatingScore * $weights['customer_rating']);
+
+        $scoreData = [
+            'on_time_rate' => round($onTimeRate, 2),
+            'fuel_efficiency_score' => round($fuelEfficiencyScore, 2),
+            'customer_rating_avg' => round($customerRatingAvg, 2),
+            'composite_score' => round($compositeScore, 2),
+            'total_deliveries' => $totalDeliveries,
+            'successful_deliveries' => $totalDeliveries, // All in list are Delivered
+            'breakdown' => [
+                'on_time_deliveries' => $onTime,
+                'driver_km_l' => round($driverKmL, 2),
+                'fleet_km_l' => round($fleetKmL, 2),
+                'weights_used' => $weights
+            ]
+        ];
+
         // 4. Save to driver_performance_scores table
+        $repo = app(\App\Modules\ReportingAnalytics\Repositories\DriverPerformanceRepository::class);
+        $repo->upsertScore($driverId, $periodStart, $periodEnd, $scoreData);
+
         // 5. Return score with breakdown
+        return array_merge([
+            'driver_id' => $driverId, 
+            'period_start' => $periodStart, 
+            'period_end' => $periodEnd
+        ], $scoreData);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
