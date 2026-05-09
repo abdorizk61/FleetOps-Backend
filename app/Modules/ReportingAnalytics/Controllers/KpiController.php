@@ -60,8 +60,19 @@ class KpiController extends Controller
      */
     public function driverScore(int $driverId, KpiFilterRequest $request): JsonResponse
     {
-        // TODO: $score = $this->kpiService->calculateDriverPerformanceScore($driverId, $request->period_start, $request->period_end)
-        // return response with score breakdown
+        try {
+            $validated = $request->validated();
+
+            $score = $this->kpiService->calculateDriverPerformanceScore(
+                $driverId,
+                $validated['period_start'],
+                $validated['period_end']
+            );
+
+            return response()->json(['success' => true, 'data' => $score]);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
     }
 
     /**

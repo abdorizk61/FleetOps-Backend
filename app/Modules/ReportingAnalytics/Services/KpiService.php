@@ -82,16 +82,94 @@ class KpiService
      */
     public function calculateDriverPerformanceScore(int $driverId, string $periodStart, string $periodEnd): array
     {
-        // TODO: Calculate driver performance composite score
-        // 1. Get weights from config: config('analytics.performance_weights')
-        //    e.g., ['delivery_speed' => 0.4, 'fuel_efficiency' => 0.3, 'customer_rating' => 0.3]
-        // 2. Calculate each component:
-        //    - on_time_rate: deliveries on time / total deliveries
-        //    - fuel_efficiency_score: normalize (km/L vs fleet average)
-        //    - customer_rating_avg: avg from post-delivery feedback
-        // 3. composite_score = sum of (component × weight) × 100
-        // 4. Save to driver_performance_scores table
-        // 5. Return score with breakdown
+        // 1. Get configurable weights (default: delivery 40%, fuel 30%, rating 30%)
+        $weights = config('analytics.performance_weights', [
+            'delivery_speed'   => 0.4,
+            'fuel_efficiency'  => 0.3,
+            'customer_rating'  => 0.3,
+        ]);
+
+        // 2. Pull raw metrics from driver_performance table for this period
+        $rawMetrics = \App\Modules\ReportingAnalytics\Models\DriverPerformance::query()
+            ->forDriver($driverId)
+            ->forPeriod($periodStart, $periodEnd)
+            ->latest('period_start')
+            ->first();
+
+        // Defaults when no data exists for the period
+        $onTimeRate          = $rawMetrics?->on_time_delivery_pct ?? 0.0;   // already 0–100
+        $fuelPer100km        = $rawMetrics?->fuel_per_100km ?? 0.0;
+        $customerRatingAvg   = $rawMetrics?->avg_customer_rating ?? 0.0;    // 0–5 scale
+        $totalDeliveries     = $rawMetrics?->completed_trips ?? 0;
+        $successfulDeliveries = $rawMetrics?->on_time_deliveries ?? 0;
+
+        // 3. Normalize each component to 0–1 scale
+        //    on_time_rate: already percentage → divide by 100
+        $onTimeNormalized = min($onTimeRate / 100, 1.0);
+
+        //    fuel_efficiency: lower fuel_per_100km is better
+        //    baseline fleet average = 12.5 L/100km; perfect = 0 L/100km
+        $fleetAvgFuelPer100km = 12.5;
+        $fuelNormalized = ($fuelPer100km > 0)
+            ? max(0, min(1, 1 - ($fuelPer100km / ($fleetAvgFuelPer100km * 2))))
+            : 0.0;
+
+        //    customer_rating: 0–5 scale → divide by 5
+        $ratingNormalized = min($customerRatingAvg / 5, 1.0);
+
+        // 4. composite_score = sum of (component × weight) × 100
+        $compositeScore = round(
+            ($onTimeNormalized * $weights['delivery_speed']
+            + $fuelNormalized  * $weights['fuel_efficiency']
+            + $ratingNormalized * $weights['customer_rating']) * 100,
+            2
+        );
+
+        // 5. Build breakdown
+        $breakdown = [
+            'on_time_rate' => [
+                'raw'        => $onTimeRate,
+                'normalized' => round($onTimeNormalized, 4),
+                'weight'     => $weights['delivery_speed'],
+                'weighted'   => round($onTimeNormalized * $weights['delivery_speed'] * 100, 2),
+            ],
+            'fuel_efficiency' => [
+                'raw'        => $fuelPer100km,
+                'normalized' => round($fuelNormalized, 4),
+                'weight'     => $weights['fuel_efficiency'],
+                'weighted'   => round($fuelNormalized * $weights['fuel_efficiency'] * 100, 2),
+            ],
+            'customer_rating' => [
+                'raw'        => $customerRatingAvg,
+                'normalized' => round($ratingNormalized, 4),
+                'weight'     => $weights['customer_rating'],
+                'weighted'   => round($ratingNormalized * $weights['customer_rating'] * 100, 2),
+            ],
+        ];
+
+        // 6. Persist to driver_performance_scores table (upsert by driver + period)
+        \App\Modules\ReportingAnalytics\Models\DriverPerformanceScore::updateOrCreate(
+            [
+                'driver_id'    => $driverId,
+                'period_start' => $periodStart,
+                'period_end'   => $periodEnd,
+            ],
+            [
+                'on_time_rate'          => $onTimeRate,
+                'fuel_efficiency_score' => round($fuelNormalized * 100, 2),
+                'customer_rating_avg'   => $customerRatingAvg,
+                'composite_score'       => $compositeScore,
+                'total_deliveries'      => $totalDeliveries,
+                'successful_deliveries' => $successfulDeliveries,
+                'breakdown'             => $breakdown,
+            ]
+        );
+
+        // 7. Return score with breakdown
+        return [
+            'composite_score' => $compositeScore,
+            'breakdown'       => $breakdown,
+        ];
     }
 
     /**

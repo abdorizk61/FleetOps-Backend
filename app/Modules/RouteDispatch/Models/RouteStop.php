@@ -30,7 +30,7 @@ class RouteStop extends Model
     protected $fillable = [
         'route_id',
         'stop_no',
-        'order_id',
+        'OrderID',
         'eta',
         'actual_arrival_time',
         'latitude',
@@ -57,6 +57,6 @@ class RouteStop extends Model
     /** The order to be delivered at this stop */
     public function order()
     {
-        return $this->belongsTo(Order::class, 'order_id', 'order_id');
+        return $this->belongsTo(Order::class, 'OrderID', 'OrderID');
     }
 }
