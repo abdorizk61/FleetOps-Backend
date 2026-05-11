@@ -12,7 +12,7 @@ class EmergencyDispatchService
     {
         // Fetching incidents from the 'incident_reports' table.
         // You can add ->where('type', 'Breakdown') or similar if needed.
-        return IncidentReport::with(['vehicle', 'driver'])
+        return IncidentReport::with(['vehicle', 'driver.user'])
             ->orderBy('incident_ts', 'desc')
             ->get()
             ->toArray();
@@ -21,7 +21,7 @@ class EmergencyDispatchService
     public function getIncidentDetails(int $id)
     {
         // Return detailed data for a specific incident.
-        return IncidentReport::with(['vehicle', 'driver'])->find($id);
+        return IncidentReport::with(['vehicle', 'driver.user'])->find($id);
     }
 
     public function getNearbyMechanics(int $id): array
