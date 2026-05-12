@@ -83,27 +83,27 @@ class OrderResource extends JsonResource
     }
 
     /**
-     * Resolve the UUID token from LiveTrackingLink.
+     * Resolve the token from LiveTrackingLink.
      *
      * Handles two legacy cases:
-     *   - Old hardcoded URL: "http://fleetops.com/track/1001"  → generates fresh UUID
-     *   - Null / empty                                          → generates fresh UUID
-     *   - Already a valid UUID string                           → returned as-is
-     *
-     * Note: if a fresh UUID is generated here it is NOT persisted — it only
-     * affects this response. A backfill command should be run to fix the DB rows.
+     *   - Old hardcoded URL: "http://fleetops.com/track/1001"  → generates fresh token and saves it
+     *   - Null / empty                                          → generates fresh token and saves it
+     *   - Already a valid token string                          → returned as-is
      */
     private function resolveToken(): string
     {
         $raw = $this->LiveTrackingLink ?? '';
 
-        // Looks like the old hardcoded URL pattern or is empty → generate fallback
+        // Looks like the old hardcoded URL pattern or is empty → generate fallback and SAVE
         if (
             empty($raw)
             || str_starts_with($raw, 'http://')
             || str_starts_with($raw, 'https://')
         ) {
-            return (string) Str::uuid();
+            $token = bin2hex(random_bytes(16));
+            $this->resource->LiveTrackingLink = $token;
+            $this->resource->save();
+            return $token;
         }
 
         return $raw;

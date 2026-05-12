@@ -101,17 +101,21 @@ class OrderService
                 'Created_at' => now(),
                 'UpdatedAt' => now(),
                 'Perishable' => false,
-                'Weight' => (int) $data['weight_kg'],
+                'Weight' => isset($data['weight_kg']) ? (int) $data['weight_kg'] : null,
                 'Volume' => isset($data['volume_m3']) ? (int) $data['volume_m3'] : null,
                 'DeliveryTimeWindow' => null,
-                'Longitude' => $data['lng'],
-                'Latitude' => $data['lat'],
+                'Longitude' => $data['lng'] ?? null,
+                'Latitude' => $data['lat'] ?? null,
                 'Area' => $data['delivery_address'],
+                'vehicle_id(FK)' => $data['vehicle_id'] ?? null,
             ]);
 
             // NOTE: Order::create() triggers the booted() creating hook which
-            // auto-generates a UUID into LiveTrackingLink and inserts a
-            // tracking_tokens row. Do NOT overwrite LiveTrackingLink here.
+            // auto-generates a UUID into LiveTrackingLink. Fallback if it fails:
+            if (empty($order->LiveTrackingLink)) {
+                $order->LiveTrackingLink = bin2hex(random_bytes(16));
+                $order->save();
+            }
 
             return $order->load(['customer.user', 'vehicle', 'driver.user']);
         });

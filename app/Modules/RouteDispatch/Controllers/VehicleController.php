@@ -11,6 +11,8 @@ namespace App\Modules\RouteDispatch\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\RouteDispatch\Services\VehicleService;
+use App\Modules\RouteDispatch\Models\Vehicle;
+use App\Modules\RouteDispatch\Resources\VehicleResource;
 use App\Modules\RouteDispatch\Requests\VehicleRequest;
 use App\Modules\RouteDispatch\Requests\StoreVehicleRequest;
 use App\Modules\RouteDispatch\Requests\UpdateVehicleRequest;
@@ -30,7 +32,19 @@ class VehicleController extends Controller
     /** GET /api/v1/dispatch/vehicles */
     public function index(): JsonResponse
     {
-        // TODO: return paginated vehicles list
+        try {
+            $vehicles = Vehicle::all();
+            return response()->json([
+                'success' => true,
+                'data' => VehicleResource::collection($vehicles)
+            ], 200);
+        } catch (Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to retrieve vehicles',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     /** GET /api/v1/dispatch/vehicles/{id} */
