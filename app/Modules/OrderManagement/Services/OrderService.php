@@ -109,8 +109,9 @@ class OrderService
                 'Area' => $data['delivery_address'],
             ]);
 
-            $order->LiveTrackingLink = 'http://fleetops.com/track/' . $order->OrderID;
-            $order->save();
+            // NOTE: Order::create() triggers the booted() creating hook which
+            // auto-generates a UUID into LiveTrackingLink and inserts a
+            // tracking_tokens row. Do NOT overwrite LiveTrackingLink here.
 
             return $order->load(['customer.user', 'vehicle', 'driver.user']);
         });
@@ -161,7 +162,8 @@ class OrderService
             );
         }
 
-        // QR codes encode the OrderID (matches LiveTrackingLink pattern: /track/{OrderID})
+        // QR codes encode the OrderID directly (separate from the customer-facing
+        // tracking URL which uses the UUID token in LiveTrackingLink).
         if ((string) $order->OrderID !== trim($scannedQr)) {
             throw new Exception("رمز QR غير صحيح. يرجى إعادة المسح.");
         }
